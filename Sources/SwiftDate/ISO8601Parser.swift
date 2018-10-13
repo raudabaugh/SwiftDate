@@ -273,7 +273,7 @@ public class ISO8601Parser {
 			// There is no date here, only a time.
 			// Set the date to now; then we'll parse the time.
 			next()
-			guard current().isDigit else {
+			guard current()?.isDigit ?? false else {
 				throw ISO8601ParserError.invalid
 			}
 			
@@ -291,6 +291,7 @@ public class ISO8601Parser {
 				case 8:		try parse_digits_8(num_digits, &segment)
 				case 6:		try parse_digits_6(num_digits, &segment)
 				case 4:		try parse_digits_4(num_digits, &segment)
+				case 5:		try parse_digits_5(num_digits, &segment)
 				case 1:		try parse_digits_1(num_digits, &segment)
 				case 2:		try parse_digits_2(num_digits, &segment)
 				case 7:		try parse_digits_7(num_digits, &segment) //YYYY DDD (ordinal date)
@@ -305,14 +306,14 @@ public class ISO8601Parser {
 		}
 		
 		var hasTime = false
-		if current().isSpace || current() == "T" {
+		if current()?.isSpace ?? false || current() == "T" {
 			hasTime = true
 			next()
 		}
 		
 		// PARSE TIME
-		
-		if current().isDigit == true {
+
+		if current()?.isDigit ?? false == true {
 			let time_sep = cfg.time_separator
 			let hasTimeSeparator = string.contains(time_sep)
 			
@@ -363,41 +364,43 @@ public class ISO8601Parser {
 					}
 				}
 			}
-			
+
 			if cfg.strict == false {
-				if current().isSpace == true {
+				if cIdx != self.eIdx && current()?.isSpace ?? false == true {
 					next()
 				}
 			}
 			
-			switch current() {
-			case "Z":
-				date.timezone = TimeZone(abbreviation: "UTC")
-				
-			case "+","-":
-				let is_negative = current() == "-"
-				next()
-				if current().isDigit == true {
-					//Read hour offset.
-					date.tz_hour = try read_int(2).value
-					if is_negative == true { date.tz_hour = -date.tz_hour }
+			if cIdx != self.eIdx {
+				switch current() {
+				case "Z":
+					date.timezone = TimeZone(abbreviation: "UTC")
 					
-					// Optional separator
-					if current() == time_sep {
-						next()
+				case "+", "-":
+					let is_negative = current() == "-"
+					next()
+					if current()?.isDigit ?? false == true {
+						//Read hour offset.
+						date.tz_hour = try read_int(2).value
+						if is_negative == true { date.tz_hour = -date.tz_hour }
+						
+						// Optional separator
+						if current() == time_sep {
+							next()
+						}
+						
+						if current()?.isDigit ?? false {
+							// Read minute offset
+							date.tz_minute = try read_int(2).value
+							if is_negative == true { date.tz_minute = -date.tz_minute }
+						}
+						
+						let timezone_offset = (date.tz_hour * 3600) + (date.tz_minute * 60)
+						date.timezone = TimeZone(secondsFromGMT: timezone_offset)
 					}
-					
-					if current().isDigit {
-						// Read minute offset
-						date.tz_minute = try read_int(2).value
-						if is_negative == true { date.tz_minute = -date.tz_minute }
-					}
-					
-					let timezone_offset = (date.tz_hour * 3600) + (date.tz_minute * 60)
-					date.timezone = TimeZone(secondsFromGMT: timezone_offset)
+				default:
+					break
 				}
-			default:
-				break
 			}
 		}
 		
@@ -546,7 +549,7 @@ public class ISO8601Parser {
 				next()
 				if current() == "W" {
 					try parseWeekAndDay()
-				} else if current().isDigit == false {
+				} else if current()?.isDigit ?? false == false {
 					try centuryOnly(&segment)
 				} else {
 					// Get month and/or date.
@@ -563,7 +566,7 @@ public class ISO8601Parser {
 						date.month_or_week = v_seg
 						if current() == "-" {
 							next()
-							if current().isDigit == true {
+							if current()?.isDigit ?? false == true {
 								date.day = try read_int(2).value
 							} else {
 								date.day = 1
@@ -616,6 +619,17 @@ public class ISO8601Parser {
 		}
 	}
 	
+	private func parse_digits_5(_ num_digits: Int, _ segment: inout Int) throws {
+		guard hyphens == 0 else { throw ISO8601ParserError.invalid }
+		// YYDDD
+		date.year = now_cmps.year!
+		date.year -= (date.year % 100)
+		date.year += segment / 1000
+		
+		date.day = segment % 1000
+		date.type = .dateOnly
+	}
+
 	private func parse_digits_4(_ num_digits: Int, _ segment: inout Int) throws {
 		
 		func parse_hyphens_0(_ num_digits: Int, _ segment: inout Int) throws {
@@ -623,8 +637,8 @@ public class ISO8601Parser {
 			if current() == "-" {
 				next()
 			}
-			
-			if current().isDigit == false {
+
+			if current()?.isDigit ?? false == false {
 				if current() == "W" {
 					try parseWeekAndDay()
 				} else {
@@ -643,7 +657,7 @@ public class ISO8601Parser {
 					if current() == "-" {
 						next()
 					}
-					if current().isDigit == false {
+					if current()?.isDigit ?? false == false {
 						date.day = 1
 					} else {
 						date.day = try read_int().value
@@ -667,7 +681,7 @@ public class ISO8601Parser {
 			if current() == "-" {
 				next()
 			}
-			if current().isDigit == false {
+			if current()?.isDigit ?? false == false {
 				date.day = 1
 			} else {
 				date.day = try read_int().value
@@ -691,8 +705,10 @@ public class ISO8601Parser {
 	
 	private func parse_digits_6(_ num_digits: Int, _ segment: inout Int) throws {
 		// YYMMDD (implicit century)
-		guard hyphens == 0 else { throw ISO8601ParserError.invalid }
-		
+		guard hyphens == 0 else {
+			throw ISO8601ParserError.invalid
+		}
+
 		date.day = segment % 100
 		segment /= 100
 		date.month_or_week = segment % 100
@@ -754,7 +770,7 @@ public class ISO8601Parser {
 	
 	private func parseWeekAndDay() throws {
 		next()
-		if current().isDigit == false {
+		if current()?.isDigit ?? false == false {
 			//Not really a week-based date; just a year followed by '-W'.
 			guard cfg.strict == false else {
 				throw ISO8601ParserError.invalid
@@ -768,7 +784,7 @@ public class ISO8601Parser {
 	}
 	
 	private func parseDayAfterWeek() throws {
-		date.day = current().isDigit == true ? try read_int(2).value : 1
+		date.day = current()?.isDigit ?? false == true ? try read_int(2).value : 1
 		date.type = .week
 	}
 	
@@ -810,7 +826,8 @@ public class ISO8601Parser {
 	/// - Parameter next: if `true` return the current char and move to the next position
 	/// - Returns: the char sat the current position of the scanner
 	@discardableResult
-	public func current(_ next: Bool = false) -> ISOChar {
+	public func current(_ next: Bool = false) -> ISOChar? {
+		guard cIdx != eIdx else { return nil }
 		let current = string[cIdx]
 		if next == true { cIdx = string.index(after: cIdx) }
 		return current
